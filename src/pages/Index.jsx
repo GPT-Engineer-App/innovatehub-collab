@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Kanban, FileText, FolderKanban } from 'lucide-react'
+import { Kanban, FileText, FolderKanban, Loader } from 'lucide-react'
 import AIAssistant from '../components/AIAssistant';
 import { supabase } from '../lib/supabase';
 
@@ -16,64 +16,94 @@ const Index = () => {
   const [newProjectName, setNewProjectName] = useState('');
   const [newDocumentName, setNewDocumentName] = useState('');
   const [newFile, setNewFile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchProjects();
-    fetchDocuments();
-    fetchFiles();
+    fetchData();
   }, []);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await Promise.all([fetchProjects(), fetchDocuments(), fetchFiles()]);
+    } catch (err) {
+      setError('Failed to fetch data. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchProjects = async () => {
     const { data, error } = await supabase.from('projects').select('*');
-    if (error) console.error('Error fetching projects:', error);
-    else setProjects(data);
+    if (error) throw error;
+    setProjects(data);
   };
 
   const fetchDocuments = async () => {
     const { data, error } = await supabase.from('documents').select('*');
-    if (error) console.error('Error fetching documents:', error);
-    else setDocuments(data);
+    if (error) throw error;
+    setDocuments(data);
   };
 
   const fetchFiles = async () => {
     const { data, error } = await supabase.from('files').select('*');
-    if (error) console.error('Error fetching files:', error);
-    else setFiles(data);
+    if (error) throw error;
+    setFiles(data);
   };
 
   const createProject = async () => {
-    const { data, error } = await supabase
-      .from('projects')
-      .insert([{ name: newProjectName }]);
-    if (error) console.error('Error creating project:', error);
+    if (!newProjectName.trim()) return;
+    setLoading(true);
+    const { error } = await supabase.from('projects').insert([{ name: newProjectName }]);
+    if (error) setError('Failed to create project. Please try again.');
     else {
       setNewProjectName('');
-      fetchProjects();
+      await fetchProjects();
     }
+    setLoading(false);
   };
 
   const createDocument = async () => {
-    const { data, error } = await supabase
-      .from('documents')
-      .insert([{ name: newDocumentName }]);
-    if (error) console.error('Error creating document:', error);
+    if (!newDocumentName.trim()) return;
+    setLoading(true);
+    const { error } = await supabase.from('documents').insert([{ name: newDocumentName }]);
+    if (error) setError('Failed to create document. Please try again.');
     else {
       setNewDocumentName('');
-      fetchDocuments();
+      await fetchDocuments();
     }
+    setLoading(false);
   };
 
   const uploadFile = async () => {
     if (!newFile) return;
-    const { data, error } = await supabase.storage
-      .from('files')
-      .upload(`${Date.now()}_${newFile.name}`, newFile);
-    if (error) console.error('Error uploading file:', error);
+    setLoading(true);
+    const { error } = await supabase.storage.from('files').upload(`${Date.now()}_${newFile.name}`, newFile);
+    if (error) setError('Failed to upload file. Please try again.');
     else {
       setNewFile(null);
-      fetchFiles();
+      await fetchFiles();
     }
+    setLoading(false);
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader className="w-8 h-8 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-red-500">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">
