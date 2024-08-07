@@ -36,19 +36,19 @@ const Index = () => {
   };
 
   const fetchProjects = async () => {
-    const { data, error } = await supabase.from('projects').select('*');
+    const { data, error } = await supabase.from('projects').select('id, name, description, created_at');
     if (error) throw error;
     setProjects(data);
   };
 
   const fetchDocuments = async () => {
-    const { data, error } = await supabase.from('documents').select('*');
+    const { data, error } = await supabase.from('documents').select('id, name, created_at');
     if (error) throw error;
     setDocuments(data);
   };
 
   const fetchFiles = async () => {
-    const { data, error } = await supabase.from('files').select('*');
+    const { data, error } = await supabase.from('files').select('id, name, file_type, created_at');
     if (error) throw error;
     setFiles(data);
   };
