@@ -1,95 +1,91 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Kanban, FileText, FolderKanban, Loader } from 'lucide-react'
 import AIAssistant from '../components/AIAssistant';
 import { supabase } from '../lib/supabase';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState("projects");
-  const [projects, setProjects] = useState([]);
-  const [documents, setDocuments] = useState([]);
-  const [files, setFiles] = useState([]);
   const [newProjectName, setNewProjectName] = useState('');
   const [newDocumentName, setNewDocumentName] = useState('');
   const [newFile, setNewFile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      await Promise.all([fetchProjects(), fetchDocuments(), fetchFiles()]);
-    } catch (err) {
-      setError('Failed to fetch data. Please try again later.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     const { data, error } = await supabase.from('projects').select('id, name, description, created_at');
     if (error) throw error;
-    setProjects(data);
-  };
+    return data;
+  }, []);
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     const { data, error } = await supabase.from('documents').select('id, name, created_at');
     if (error) throw error;
-    setDocuments(data);
-  };
+    return data;
+  }, []);
 
-  const fetchFiles = async () => {
+  const fetchFiles = useCallback(async () => {
     const { data, error } = await supabase.from('files').select('id, name, file_type, created_at');
     if (error) throw error;
-    setFiles(data);
-  };
+    return data;
+  }, []);
 
-  const createProject = async () => {
-    if (!newProjectName.trim()) return;
-    setLoading(true);
-    const { error } = await supabase.from('projects').insert([{ name: newProjectName }]);
-    if (error) setError('Failed to create project. Please try again.');
-    else {
+  const { data: projects, isLoading: projectsLoading, error: projectsError } = useQuery({
+    queryKey: ['projects'],
+    queryFn: fetchProjects,
+  });
+
+  const { data: documents, isLoading: documentsLoading, error: documentsError } = useQuery({
+    queryKey: ['documents'],
+    queryFn: fetchDocuments,
+  });
+
+  const { data: files, isLoading: filesLoading, error: filesError } = useQuery({
+    queryKey: ['files'],
+    queryFn: fetchFiles,
+  });
+
+  const createProjectMutation = useMutation({
+    mutationFn: async (name) => {
+      const { error } = await supabase.from('projects').insert([{ name }]);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       setNewProjectName('');
-      await fetchProjects();
-    }
-    setLoading(false);
-  };
+    },
+  });
 
-  const createDocument = async () => {
-    if (!newDocumentName.trim()) return;
-    setLoading(true);
-    const { error } = await supabase.from('documents').insert([{ name: newDocumentName }]);
-    if (error) setError('Failed to create document. Please try again.');
-    else {
+  const createDocumentMutation = useMutation({
+    mutationFn: async (name) => {
+      const { error } = await supabase.from('documents').insert([{ name }]);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
       setNewDocumentName('');
-      await fetchDocuments();
-    }
-    setLoading(false);
-  };
+    },
+  });
 
-  const uploadFile = async () => {
-    if (!newFile) return;
-    setLoading(true);
-    const { error } = await supabase.storage.from('files').upload(`${Date.now()}_${newFile.name}`, newFile);
-    if (error) setError('Failed to upload file. Please try again.');
-    else {
+  const uploadFileMutation = useMutation({
+    mutationFn: async (file) => {
+      const { error } = await supabase.storage.from('files').upload(`${Date.now()}_${file.name}`, file);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
       setNewFile(null);
-      await fetchFiles();
-    }
-    setLoading(false);
-  };
+    },
+  });
 
-  if (loading) {
+  const isLoading = projectsLoading || documentsLoading || filesLoading;
+  const error = projectsError || documentsError || filesError;
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader className="w-8 h-8 animate-spin" />
@@ -100,7 +96,7 @@ const Index = () => {
   if (error) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-red-500">{error}</p>
+        <p className="text-red-500">An error occurred. Please try again later.</p>
       </div>
     );
   }
@@ -145,12 +141,14 @@ const Index = () => {
                     onChange={(e) => setNewProjectName(e.target.value)}
                   />
                 </div>
-                <Button onClick={createProject}>Create Project</Button>
+                <Button onClick={() => createProjectMutation.mutate(newProjectName)} disabled={createProjectMutation.isLoading}>
+                  {createProjectMutation.isLoading ? 'Creating...' : 'Create Project'}
+                </Button>
               </div>
               <div className="mt-4">
                 <h3 className="text-lg font-semibold">Your Projects</h3>
                 <ul className="list-disc pl-5 mt-2">
-                  {projects.map((project) => (
+                  {projects && projects.map((project) => (
                     <li key={project.id}>{project.name}</li>
                   ))}
                 </ul>
@@ -175,12 +173,14 @@ const Index = () => {
                     onChange={(e) => setNewDocumentName(e.target.value)}
                   />
                 </div>
-                <Button onClick={createDocument}>Create Document</Button>
+                <Button onClick={() => createDocumentMutation.mutate(newDocumentName)} disabled={createDocumentMutation.isLoading}>
+                  {createDocumentMutation.isLoading ? 'Creating...' : 'Create Document'}
+                </Button>
               </div>
               <div className="mt-4">
                 <h3 className="text-lg font-semibold">Your Documents</h3>
                 <ul className="list-disc pl-5 mt-2">
-                  {documents.map((document) => (
+                  {documents && documents.map((document) => (
                     <li key={document.id}>{document.name}</li>
                   ))}
                 </ul>
@@ -204,12 +204,14 @@ const Index = () => {
                     onChange={(e) => setNewFile(e.target.files[0])}
                   />
                 </div>
-                <Button onClick={uploadFile}>Upload File</Button>
+                <Button onClick={() => uploadFileMutation.mutate(newFile)} disabled={uploadFileMutation.isLoading || !newFile}>
+                  {uploadFileMutation.isLoading ? 'Uploading...' : 'Upload File'}
+                </Button>
               </div>
               <div className="mt-4">
                 <h3 className="text-lg font-semibold">Your Files</h3>
                 <ul className="list-disc pl-5 mt-2">
-                  {files.map((file) => (
+                  {files && files.map((file) => (
                     <li key={file.id}>{file.name}</li>
                   ))}
                 </ul>
